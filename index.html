@@ -1360,43 +1360,52 @@ function DataManagement({data, updateData}) {
   
   const handleProcessCSV = () => {
     if (!selectedFile) { setStatus('❌ Select a file first'); return; }
-    if (!window.Papa) { setStatus('❌ CSV parser not loaded. Try refreshing.'); return; }
     
     setStatus('⏳ Processing...');
     
     try {
-      Papa.parse(selectedFile, {
-        header:true, 
-        skipEmptyLines:true,
-        complete: (results) => {
-          try {
-            if (!results.data || results.data.length === 0) {
-              setStatus('❌ CSV is empty');
-              return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const csv = e.target.result;
+          const lines = csv.split('\n').filter(l => l.trim());
+          if (lines.length < 2) { setStatus('❌ CSV is empty'); return; }
+          
+          // Parse header
+          const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g,''));
+          
+          // Parse rows
+          const rows = [];
+          for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(',').map(v => v.trim().replace(/^"/, '').replace(/"$/, ''));
+            if (values.length > 0 && values[0]) {
+              const row = {};
+              headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
+              rows.push(row);
             }
-            
-            setCsvData(results.data);
-            const h = Object.keys(results.data[0]);
-            const m = {};
-            h.forEach(k => m[k] = k.toLowerCase().replace(/\s+/g,''));
-            setMapping(m);
-            
-            const p = results.data.slice(0,3).map(row => {
-              const o = {};
-              Object.keys(m).forEach(k => { if(m[k]) o[m[k]] = row[k]; });
-              return o;
-            });
-            setPreview(p);
-            setStep(1);
-            setStatus('');
-          } catch(err) {
-            setStatus(`❌ ${err.message}`);
           }
-        },
-        error: (err) => {
+          
+          if (rows.length === 0) { setStatus('❌ No valid rows found'); return; }
+          
+          setCsvData(rows);
+          const m = {};
+          headers.forEach(h => m[h] = h.toLowerCase().replace(/\s+/g,''));
+          setMapping(m);
+          
+          const p = rows.slice(0,3).map(row => {
+            const o = {};
+            Object.keys(m).forEach(k => { if(m[k]) o[m[k]] = row[k]; });
+            return o;
+          });
+          setPreview(p);
+          setStep(1);
+          setStatus('');
+        } catch(err) {
           setStatus(`❌ ${err.message}`);
         }
-      });
+      };
+      reader.onerror = () => setStatus('❌ Failed to read file');
+      reader.readAsText(selectedFile);
     } catch(err) {
       setStatus(`❌ Error: ${err.message}`);
     }
