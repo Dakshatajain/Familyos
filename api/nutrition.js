@@ -1,53 +1,41 @@
 module.exports = async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
   try {
-    const { ingredients, servings } = req.body;
+    const { ingredients } = req.body;
+    if (!ingredients) return res.status(400).json({ error: 'Ingredients required' });
 
-    if (!ingredients) {
-      return res.status(400).json({ error: 'Ingredients required' });
-    }
-
-    // Remove quantities like "300g", "1 cup" so USDA can find the ingredient
+    // Simple regex to extract just the ingredient name
     const ingredientList = ingredients
       .split(/[\*,\n]/)
-      .map(i => i.trim())
-      .filter(i => i.length > 0)
-      .map(i => i.replace(/^\d+\s*[a-z]+\s*/i, '').replace(/\(.*?\)/g, '').trim())
-      .filter(i => i.length > 0)
-      .slice(0, 5);
+      .map(i => i.replace(/^\d+[a-z]*\s*/i, '').replace(/[\(\)]/g, '').trim())
+      .filter(i => i.length > 2)
+      .slice(0, 3);
 
-    let totalCalories = 0;
-    let totalProtein = 0;
-    let totalCarbs = 0;
-    let totalFat = 0;
+    let totalCal = 0, totalPro = 0, totalCarb = 0, totalFat = 0;
 
     for (const ingredient of ingredientList) {
       try {
-        const response = await fetch(
-          `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(ingredient)}&pageSize=1`
-        );
+        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(ingredient)}&pageSize=1`;
+        const response = await fetch(url);
         const data = await response.json();
-
-        if (data.foods && data.foods.length > 0) {
-          const food = data.foods[0];
-          const nutrients = food.foodNutrients || [];
-
-          const calories = nutrients.find(n => n.nutrientId === 1008)?.value || 0;
-          const protein = nutrients.find(n => n.nutrientId === 1003)?.value || 0;
-          const carbs = nutrients.find(n => n.nutrientId === 1005)?.value || 0;
-          const fat = nutrients.find(n => n.nutrientId === 1004)?.value || 0;
-
-          totalCalories += calories;
-          totalProtein += protein;
-          totalCarbs += carbs;
-          totalFat += fat;
-        }
-      } catch (e) {
-        // Continue
-      }
+        
+        if (!data.foods) continue;
+        const food = data.foods[0];
+        const n = food.foodNutrients || [];
+        
+        totalCal += n.find(x => x.nutrientId === 1008)?.value || 0;
+        totalPro += n.find(x => x.nutrientId === 1003)?.value || 0;
+        totalCarb += n.find(x => x.nutrientId === 1005)?.value || 0;
+        totalFat += n.find(x => x.nutrientId === 1004)?.value || 0;
+      } catch (e) {}
     }
 
-    const servingCount = parseInt(servings)
+    res.json({
+      calories: Math.round(totalCal / 3),
+      protein: Math.round(totalPro / 3),
+      carbs: Math.round(totalCarb / 3),
+      fat: Math.round(totalFat / 3)
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+};
