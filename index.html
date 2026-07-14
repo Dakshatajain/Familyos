@@ -735,6 +735,7 @@ function Kitchen({data,updateData}) {
     const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'})); a.download='My_Recipes.txt'; a.click();
   };
 const calcNutrition = async () => {
+  console.log('AI Calc clicked!');
   if (!f.ingredients) return;
   setAiLoading(true);
   try {
