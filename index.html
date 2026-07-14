@@ -751,6 +751,7 @@ const calcNutrition = async () => {
     if (!response.ok) throw new Error('Failed to calculate nutrition');
     
     const nutrition = await response.json();
+    console.log('Nutrition data received:', nutrition);
     setF(prev => ({ ...prev, ...nutrition }));
   } catch (error) {
     console.error("Nutrition calc failed:", error);
