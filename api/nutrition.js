@@ -5,10 +5,10 @@ export default async function handler(req, res) {
 
   try {
     const { ingredients, servings } = req.body;
-    const apiKey = 'AQ.Ab8RN6Ihbi8Frd2k2rdBZgUYFFUxOZxKcASs3yzTuaD-1nmofA';
+    const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      return res.status(500).json({ error: 'API key not found' });
+      return res.status(500).json({ error: 'API key not configured' });
     }
 
     if (!ingredients) {
@@ -16,14 +16,14 @@ export default async function handler(req, res) {
     }
 
     const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + apiKey,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: 'Estimate nutrition per serving for ' + (servings || 1) + ' servings based on: ' + ingredients + '\n\nReply ONLY with JSON: {"calories":NUMBER,"protein":NUMBER,"carbs":NUMBER,"fat":NUMBER}'
+              text: `Estimate nutrition per serving for ${servings || 1} servings based on: ${ingredients}\n\nReply ONLY with JSON: {"calories":NUMBER,"protein":NUMBER,"carbs":NUMBER,"fat":NUMBER}`
             }]
           }]
         })
@@ -32,15 +32,15 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    if (!response.ok || !data.candidates?.[0]?.content?.parts?.[0]?.text) {
-      throw new Error('Gemini API error: ' + JSON.stringify(data));
+    if (!response.ok) {
+      return res.status(500).json({ error: 'Gemini API error' });
     }
 
-    const text = data.candidates[0].content.parts[0].text;
-    const match = text.match(/\{[\s\S]*\}/);
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const match = text?.match(/\{[\s\S]*\}/);
 
     if (!match) {
-      throw new Error('Could not parse JSON from response');
+      return res.status(500).json({ error: 'Could not parse nutrition data' });
     }
 
     const nutrition = JSON.parse(match[0]);
