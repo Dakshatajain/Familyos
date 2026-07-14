@@ -5,7 +5,7 @@ export default async function handler(req, res) {
 
   try {
     const { ingredients, servings } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = 'AQ.Ab8RN6Ihbi8Frd2k2rdBZgUYFFUxOZxKcASs3yzTuaD-1nmofA';
 
     if (!apiKey) {
       return res.status(500).json({ error: 'API key not found' });
