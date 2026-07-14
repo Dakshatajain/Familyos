@@ -1534,12 +1534,30 @@ function DataManagement({data, updateData}) {
       </div>
     ` : html`
       <div>
-        <h3 style=${{fontSize:14,fontWeight:700,marginBottom:12,color:C.text}}>Export ${cfg.label}</h3>
+        <h3 style=${{fontSize:14,fontWeight:700,marginBottom:12,color:C.text}}>Export & Clear ${cfg.label}</h3>
         <p style=${{fontSize:13,color:C.textMuted,marginBottom:16}}>Download as CSV for backup or editing in Google Sheets</p>
         <div style=${{padding:20,background:C.amberLt,borderRadius:8,marginBottom:16}}>
           <p style=${{fontWeight:700,marginBottom:8,color:C.text}}>📦 Ready to export</p>
           <p style=${{fontSize:12,color:C.textMuted,marginBottom:12}}>${section==='calendar'?data.events?.length:section==='kitchen'?data.recipes?.length:section==='groceries'?data.groceries?.master?.length:section==='tasks'?data.tasks?.length:data.maintenance?.length||0} items</p>
           <${Btn} onClick=${handleExport}>⬇️ Download CSV<//>
+        </div>
+
+        <div style=${{padding:20,background:'#ffebee',borderRadius:8}}>
+          <p style=${{fontWeight:700,marginBottom:8,color:'#c62828'}}>🗑️ Clear All ${cfg.label}</p>
+          <p style=${{fontSize:12,color:'#c62828',marginBottom:12}}>This will delete all ${section} items. Make sure you've exported a backup first!</p>
+          <${Btn} onClick=${()=>{
+            if(confirm(`Delete all ${section}? This cannot be undone!`)) {
+              let updates = {};
+              if(section==='calendar') updates.events = [];
+              else if(section==='kitchen') updates.recipes = [];
+              else if(section==='groceries') updates.groceries = {...data.groceries, master:[]};
+              else if(section==='tasks') updates.tasks = [];
+              else if(section==='homecare') updates.maintenance = [];
+              updateData(updates);
+              setStatus(`✅ Cleared all ${section}!`);
+              setTimeout(()=>setStatus(''),2000);
+            }
+          }}>🗑️ Delete All ${cfg.label}<//>
         </div>
       </div>
     `}
