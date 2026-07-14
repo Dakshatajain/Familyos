@@ -734,15 +734,28 @@ function Kitchen({data,updateData}) {
     const txt = data.recipes.map(r=>`${r.name}\n${'='.repeat(r.name.length)}\n\nINGREDIENTS:\n${r.ingredients}\n\nINSTRUCTIONS:\n${r.instructions}\n\n${'─'.repeat(40)}\n`).join('\n');
     const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'})); a.download='My_Recipes.txt'; a.click();
   };
-  const calcNutrition = async () => {
-    if (!f.ingredients) return; setAiLoading(true);
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,messages:[{role:'user',content:`Estimate nutrition per serving for ${f.servings} servings. Ingredients: ${f.ingredients}. Reply ONLY with JSON: {"calories":N,"protein":N,"carbs":N,"fat":N}`}]})});
-      const d=await res.json(); const match=d.content[0].text.match(/\{[\s\S]*\}/);
-      if (match) setF(prev=>({...prev,nutrition:JSON.parse(match[0])}));
-    } catch(e) {}
-    setAiLoading(false);
-  };
+const calcNutrition = async () => {
+  if (!f.ingredients) return;
+  setAiLoading(true);
+  try {
+    const response = await fetch('/api/nutrition', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        ingredients: f.ingredients, 
+        servings: f.servings || 1 
+      })
+    });
+    
+    if (!response.ok) throw new Error('Failed to calculate nutrition');
+    
+    const nutrition = await response.json();
+    setF(prev => ({ ...prev, nutrition }));
+  } catch (error) {
+    console.error("Nutrition calc failed:", error);
+  }
+  setAiLoading(false);
+};
   const wDays = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((d,i)=>{ const dt=new Date(mpWeek+'T00:00:00'); dt.setDate(dt.getDate()+i); return {day:d,short:d.slice(0,3),date:dt.toISOString().split('T')[0]}; });
   const getMeal = (day,who,slot) => data.mealPlan?.[mpWeek]?.[day]?.[who]?.[slot]||'';
   const setMeal = (day,who,slot,val) => {
