@@ -1343,6 +1343,8 @@ function DataManagement({data, updateData}) {
   const [preview, setPreview] = useState([]);
   const [importType, setImportType] = useState('csv');
   const [selectedFile, setSelectedFile] = useState(null);
+  const [step, setStep] = useState(0);
+  const [status, setStatus] = useState('');
   
   const sections = {
     calendar:{label:'Calendar Events',req:['title','date'],fields:['title','date','type','notes']},
