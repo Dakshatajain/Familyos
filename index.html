@@ -1344,6 +1344,7 @@ function DataManagement({data, updateData}) {
   const [step, setStep] = useState(0);
   const [status, setStatus] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
+  const [importType, setImportType] = useState('csv');
   
   const sections = {
     calendar:{label:'Calendar Events',req:['title','date'],fields:['title','date','type','notes']},
@@ -1356,6 +1357,45 @@ function DataManagement({data, updateData}) {
   const handleFileSelect = e => {
     const f = e.target.files[0];
     if (f) { setSelectedFile(f); setStatus(''); }
+  };
+  
+  const handleProcessJSON = () => {
+    if (!selectedFile) { setStatus('❌ Select a file first'); return; }
+    
+    setStatus('⏳ Processing JSON...');
+    
+    try {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const jsonData = JSON.parse(e.target.result);
+          if (!Array.isArray(jsonData)) { setStatus('❌ JSON must be an array'); return; }
+          if (jsonData.length === 0) { setStatus('❌ JSON is empty'); return; }
+          
+          setCsvData(jsonData);
+          const firstItem = jsonData[0];
+          const fields = Object.keys(firstItem);
+          const m = {};
+          fields.forEach(f => m[f] = f);
+          setMapping(m);
+          
+          const p = jsonData.slice(0, 3).map(row => {
+            const o = {};
+            fields.forEach(f => { o[f] = row[f] || ''; });
+            return o;
+          });
+          setPreview(p);
+          setStep(1);
+          setStatus('');
+        } catch(err) {
+          setStatus(`❌ Invalid JSON: ${err.message}`);
+        }
+      };
+      reader.onerror = () => setStatus('❌ Failed to read file');
+      reader.readAsText(selectedFile);
+    } catch(err) {
+      setStatus(`❌ Error: ${err.message}`);
+    }
   };
   
   const handleProcessCSV = () => {
@@ -1482,20 +1522,25 @@ function DataManagement({data, updateData}) {
       <div style=${{display:'flex',flexDirection:'column',gap:16}}>
         <${Sel} label="Select section:" value=${section} onChange=${v=>{setSection(v);setStep(0);}} options=${Object.entries(sections).map(([k,c])=>({value:k,label:c.label}))}/>
         ${step === 0 ? html`
-          <div style=${{border:`2px dashed ${C.coral}`,borderRadius:12,padding:'40px 20px',textAlign:'center',background:C.coralLt}}>
-            <p style=${{fontSize:14,fontWeight:700,color:C.text,marginBottom:8}}>📁 Upload CSV File</p>
-            <p style=${{fontSize:12,color:C.textMuted,marginBottom:16}}>Export from Google Sheets as .csv</p>
-            <input type="file" accept=".csv" onChange=${handleFileSelect} style=${{padding:'8px',marginBottom:'12px'}}/>
-            ${selectedFile && html`
-              <div style=${{marginBottom:16}}>
-                <p style=${{fontSize:12,color:C.sage,fontWeight:600,marginBottom:8}}>✅ Selected: ${selectedFile.name}</p>
-                <${Btn} onClick=${handleProcessCSV}>Process CSV<//>
-              </div>
-            `}
-            ${status && html`<p style=${{fontSize:12,color:status.includes('✅')?C.green:status.includes('⏳')?C.text:C.red,marginTop:8,fontWeight:600}}>${status}</p>`}
-            <p style=${{fontSize:11,color:C.textMuted,marginTop:16}}>Required: ${cfg.req.join(', ')}</p>
-          </div>
-        ` : html`
+          <div style=${{display:'flex',flexDirection:'column',gap:16}}>
+            <div style=${{display:'flex',gap:8}}>
+              <button onClick=${()=>setImportType('csv')} style=${{flex:1,padding:'8px 12px',background:importType==='csv'?C.sage:C.border,color:importType==='csv'?'white':C.text,border:'none',borderRadius:6,cursor:'pointer',fontWeight:600,fontSize:13}}>📄 CSV</button>
+              <button onClick=${()=>setImportType('json')} style=${{flex:1,padding:'8px 12px',background:importType==='json'?C.sage:C.border,color:importType==='json'?'white':C.text,border:'none',borderRadius:6,cursor:'pointer',fontWeight:600,fontSize:13}}>📋 JSON</button>
+            </div>
+            <div style=${{border:`2px dashed ${C.coral}`,borderRadius:12,padding:'40px 20px',textAlign:'center',background:C.coralLt}}>
+              <p style=${{fontSize:14,fontWeight:700,color:C.text,marginBottom:8}}>📁 Upload ${importType === 'csv' ? 'CSV' : 'JSON'} File</p>
+              <p style=${{fontSize:12,color:C.textMuted,marginBottom:16}}>${importType === 'csv' ? 'Export from Google Sheets as .csv' : 'Upload JSON file with array of items'}</p>
+              <input type="file" accept=${importType === 'csv' ? '.csv' : '.json'} onChange=${handleFileSelect} style=${{padding:'8px',marginBottom:'12px'}}/>
+              ${selectedFile && html`
+                <div style=${{marginBottom:16}}>
+                  <p style=${{fontSize:12,color:C.sage,fontWeight:600,marginBottom:8}}>✅ Selected: ${selectedFile.name}</p>
+                  <${Btn} onClick=${importType === 'csv' ? handleProcessCSV : handleProcessJSON}>${importType === 'csv' ? 'Process CSV' : 'Process JSON'}<//>
+                </div>
+              `}
+              ${status && html`<p style=${{fontSize:12,color:status.includes('✅')?C.green:status.includes('⏳')?C.text:C.red,marginTop:8,fontWeight:600}}>${status}</p>`}
+              <p style=${{fontSize:11,color:C.textMuted,marginTop:16}}>Required: ${cfg.req.join(', ')}</p>
+            </div>
+          </div>` : html`
           <div>
             <h3 style=${{fontSize:14,fontWeight:700,marginBottom:12,color:C.text}}>Step 1: Map Columns</h3>
             <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))',gap:12,marginBottom:20}}>
