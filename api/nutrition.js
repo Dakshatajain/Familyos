@@ -10,9 +10,12 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'Ingredients required' });
     }
 
+    // Remove quantities like "300g", "1 cup" so USDA can find the ingredient
     const ingredientList = ingredients
       .split(/[\*,\n]/)
       .map(i => i.trim())
+      .filter(i => i.length > 0)
+      .map(i => i.replace(/^\d+\s*[a-z]+\s*/i, '').replace(/\(.*?\)/g, '').trim())
       .filter(i => i.length > 0)
       .slice(0, 5);
 
@@ -43,20 +46,8 @@ module.exports = async function handler(req, res) {
           totalFat += fat;
         }
       } catch (e) {
-        console.log('Error finding:', ingredient, e.message);
+        // Continue
       }
     }
 
-    const servingCount = parseInt(servings) || 1;
-
-    res.status(200).json({
-      calories: Math.round(totalCalories / servingCount),
-      protein: Math.round(totalProtein / servingCount),
-      carbs: Math.round(totalCarbs / servingCount),
-      fat: Math.round(totalFat / servingCount)
-    });
-
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
+    const servingCount = parseInt(servings)
