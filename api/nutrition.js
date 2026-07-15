@@ -1,52 +1,66 @@
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
     const { ingredients, servings } = req.body;
-    
-    if (!ingredients) {
-      return res.status(400).json({ error: 'Ingredients required' });
-    }
+    if (!ingredients) return res.status(400).json({ error: 'Ingredients required' });
 
-    const ingredientList = ingredients
-      .split('\n')
-      .map(i => i.trim())
-      .filter(i => i.length > 0)
-      .slice(0, 1);
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Gemini API key is not configured.' });
 
-    console.log('Searching for:', ingredientList);
+    const responseSchema = {
+      type: "OBJECT",
+      properties: {
+        calories: { type: "INTEGER", description: "Total calories for the entire recipe" },
+        protein: { type: "INTEGER", description: "Total protein in grams" },
+        carbs: { type: "INTEGER", description: "Total carbohydrates in grams" },
+        fat: { type: "INTEGER", description: "Total fat in grams" }
+      },
+      required: ["calories", "protein", "carbs", "fat"]
+    };
 
-    for (const ingredient of ingredientList) {
-      try {
-        const query = ingredient.replace(/^\*\s*/, '').split(',')[0];
-        console.log('Query:', query);
-        
-        const response = await fetch(
-          `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=1`
-        );
-        const data = await response.json();
-        
-        console.log('USDA Response:', JSON.stringify(data, null, 2));
-        
-        if (data.foods?.[0]) {
-          console.log('Food found:', data.foods[0].description);
-          console.log('Nutrients:', data.foods[0].foodNutrients);
-        }
-      } catch (e) {
-        console.log('Error:', e.message);
+    const prompt = `
+You are a professional nutrition analyzer. Analyze the following list of ingredients and calculate the total nutrition (Calories, Protein in grams, Carbs in grams, and Fat in grams) for the ENTIRE recipe.
+
+Ingredients:
+${ingredients}
+
+Return the total amounts for the entire batch. Do not divide by servings.
+`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: responseSchema,
+          },
+        }),
       }
-    }
+    );
 
-    res.status(200).json({
-      calories: 100,
-      protein: 10,
-      carbs: 15,
-      fat: 5
+    if (!response.ok) throw new Error(`Gemini API returned status ${response.status}`);
+
+    const data = await response.json();
+    const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!resultText) throw new Error("Failed to retrieve parsed text.");
+
+    const totals = JSON.parse(resultText);
+    const divisor = Math.max(1, parseInt(servings) || 1);
+
+    return res.status(200).json({
+      calories: Math.round(totals.calories / divisor),
+      protein: Math.round(totals.protein / divisor),
+      carbs: Math.round(totals.carbs / divisor),
+      fat: Math.round(totals.fat / divisor),
     });
 
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Nutrition API Error:', error);
+    return res.status(500).json({ error: 'Failed to calculate nutrition properties.' });
   }
 }
