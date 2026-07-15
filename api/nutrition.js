@@ -27,46 +27,39 @@ Return ONLY valid JSON.
 }
 `;
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/gemini-2.5-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: prompt
-              }
-            ]
-          }
-        ]
-      })
-    }
-  );
-
-  const data = await response.json();
-
-// const response = await fetch(
-//   `https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`
-// );
-
-// const data = await response.json();
-
-console.log(
-  "Available models:",
-  JSON.stringify(data, null, 2)
-);
-
-return res.status(200).json(data);
-
-    console.log(
-      "Gemini response:",
-      JSON.stringify(data, null, 2)
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt
+                }
+              ]
+            }
+          ]
+        })
+      }
     );
+
+    const raw = await response.text();
+
+    console.log("HTTP status:", response.status);
+    console.log("Gemini raw response:", raw);
+
+    if (!raw) {
+      return res.status(500).json({
+        error: "Empty response from Gemini"
+      });
+    }
+
+    const data = JSON.parse(raw);
 
     if (!data.candidates) {
       return res.status(500).json(data);
@@ -85,7 +78,7 @@ return res.status(200).json(data);
     return res.status(200).json(nutrition);
 
   } catch (error) {
-    console.error(error);
+    console.error("Error:", error);
 
     return res.status(500).json({
       error: error.message
