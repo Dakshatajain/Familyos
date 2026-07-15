@@ -727,6 +727,8 @@ function Kitchen({data,updateData}) {
   const [f,setF] = useState({name:'',category:'Dinner',servings:4,prepTime:'',cookTime:'',tags:'',ingredients:'',instructions:'',note:'',nutrition:{calories:0,protein:0,carbs:0,fat:0}});
   const [aiLoading,setAiLoading] = useState(false);
   const [mpWeek,setMpWeek] = useState(()=>{ const d=new Date(); d.setDate(d.getDate()-d.getDay()); return d.toISOString().split('T')[0]; });
+  const [mpCell,setMpCell] = useState(null);
+  const [mpCustomText,setMpCustomText] = useState('');
   const openModal = item => { setEdit(item||null); setF(item?{...item}:{name:'',category:'Dinner',servings:4,prepTime:'',cookTime:'',tags:'',ingredients:'',instructions:'',note:'',nutrition:{calories:0,protein:0,carbs:0,fat:0}}); setModal(true); };
   const save = () => { if(!f.name) return; updateData({recipes:edit?data.recipes.map(r=>r.id===edit.id?{...f,id:edit.id}:r):[...data.recipes,{...f,id:uid()}]}); setModal(false); };
   const del = id => { updateData({recipes:data.recipes.filter(r=>r.id!==id)}); setView(null); };
@@ -752,16 +754,34 @@ const calcNutrition = async () => {
     
     const nutrition = await response.json();
     console.log('Nutrition data received:', nutrition);
-    setF(prev => ({ ...prev, nutrition }));
+    setF(prev => ({ ...prev, ...nutrition }));
   } catch (error) {
     console.error("Nutrition calc failed:", error);
   }
   setAiLoading(false);
 };
   const wDays = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((d,i)=>{ const dt=new Date(mpWeek+'T00:00:00'); dt.setDate(dt.getDate()+i); return {day:d,short:d.slice(0,3),date:dt.toISOString().split('T')[0]}; });
-  const getMeal = (day,who,slot) => data.mealPlan?.[mpWeek]?.[day]?.[who]?.[slot]||'';
-  const setMeal = (day,who,slot,val) => {
-    const mp={...data.mealPlan}; if(!mp[mpWeek])mp[mpWeek]={}; if(!mp[mpWeek][day])mp[mpWeek][day]={}; if(!mp[mpWeek][day][who])mp[mpWeek][day][who]={}; mp[mpWeek][day][who][slot]=val; updateData({mealPlan:mp});
+  const getMealItems = (day,who,slot) => {
+    const v = data.mealPlan?.[mpWeek]?.[day]?.[who]?.[slot];
+    if(!v) return [];
+    return Array.isArray(v) ? v : [v]; // backward-compatible with old single-string entries
+  };
+  const setMealItems = (day,who,slot,items) => {
+    const mp={...data.mealPlan}; if(!mp[mpWeek])mp[mpWeek]={}; if(!mp[mpWeek][day])mp[mpWeek][day]={}; if(!mp[mpWeek][day][who])mp[mpWeek][day][who]={};
+    mp[mpWeek][day][who]={...mp[mpWeek][day][who],[slot]:items}; updateData({mealPlan:mp});
+  };
+  const toggleMealItem = (day,who,slot,name) => {
+    const cur = getMealItems(day,who,slot);
+    setMealItems(day,who,slot, cur.includes(name) ? cur.filter(x=>x!==name) : [...cur,name]);
+  };
+  const addCustomMealItem = (day,who,slot,name) => {
+    const n=(name||'').trim(); if(!n) return;
+    const cur = getMealItems(day,who,slot);
+    if(cur.includes(n)) return;
+    setMealItems(day,who,slot,[...cur,n]);
+  };
+  const removeMealItem = (day,who,slot,name) => {
+    setMealItems(day,who,slot,getMealItems(day,who,slot).filter(x=>x!==name));
   };
   return html`<div>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
@@ -799,16 +819,44 @@ const calcNutrition = async () => {
             </tr></thead>
             <tbody>${slots.map(slot=>html`<tr key=${slot}>
               <td style=${{padding:'4px 8px',fontSize:12,fontWeight:600,color:C.textMuted,whiteSpace:'nowrap'}}>${slot}</td>
-              ${wDays.map(d=>html`<td key=${d.day} style=${{padding:'3px 4px'}}>
-                <input list=${'rl-'+who} value=${getMeal(d.day,who,slot)} onInput=${e=>setMeal(d.day,who,slot,e.target.value)} placeholder="..."
-                  style=${{width:'100%',border:`1px solid ${C.border}`,borderRadius:5,padding:'5px 4px',fontSize:11,fontFamily:'inherit',background:C.cream,color:C.text}}/>
-              </td>`)}
+              ${wDays.map(d=>{ const items=getMealItems(d.day,who,slot); return html`<td key=${d.day} style=${{padding:'3px 4px'}}>
+                <div onClick=${()=>{setMpCell({day:d.day,who,slot});setMpCustomText('');}}
+                  style=${{width:'100%',minHeight:30,boxSizing:'border-box',border:`1px solid ${C.border}`,borderRadius:5,padding:'4px 5px',fontSize:10.5,fontFamily:'inherit',background:C.cream,cursor:'pointer',display:'flex',flexWrap:'wrap',gap:3,alignItems:'center'}}>
+                  ${items.length ? items.map(it=>html`<span key=${it} style=${{background:C.sageLt,color:C.sage,borderRadius:4,padding:'1px 5px',fontSize:10,fontWeight:600,whiteSpace:'nowrap'}}>${it}</span>`) : html`<span style=${{color:C.textMuted}}>···</span>`}
+                </div>
+              </td>`; })}
             </tr>`)}</tbody>
           </table>
-          <datalist id=${'rl-'+who}>${data.recipes.map(r=>html`<option key=${r.id} value=${r.name}/>`  )}</datalist>
         </div>
       </div>`)}
     </div>`}
+    <${Modal} title=${mpCell?`${mpCell.slot} · ${wDays.find(d=>d.day===mpCell.day)?.short||''}`:''} open=${!!mpCell} onClose=${()=>setMpCell(null)}>
+      ${mpCell&&html`<div>
+        <div style=${{display:'flex',flexWrap:'wrap',gap:6,marginBottom:16,minHeight:32}}>
+          ${getMealItems(mpCell.day,mpCell.who,mpCell.slot).length ? getMealItems(mpCell.day,mpCell.who,mpCell.slot).map(it=>html`<span key=${it} style=${{display:'flex',alignItems:'center',gap:5,background:C.sageLt,color:C.sage,borderRadius:7,padding:'6px 8px 6px 11px',fontSize:13,fontWeight:600}}>
+            ${it}<button onClick=${()=>removeMealItem(mpCell.day,mpCell.who,mpCell.slot,it)} style=${{background:'none',border:'none',cursor:'pointer',color:C.sage,fontSize:14,padding:0,lineHeight:1}}>✕</button>
+          </span>`) : html`<span style=${{fontSize:13,color:C.textMuted,fontStyle:'italic'}}>Nothing added yet</span>`}
+        </div>
+        <div style=${{display:'flex',gap:8,marginBottom:18}}>
+          <input value=${mpCustomText} onInput=${e=>setMpCustomText(e.target.value)} list="mp-recipe-list"
+            onKeyDown=${e=>{ if(e.key==='Enter'){ addCustomMealItem(mpCell.day,mpCell.who,mpCell.slot,mpCustomText); setMpCustomText(''); } }}
+            placeholder="Add item (e.g. Dal, Rice, Sabji)…"
+            style=${{flex:1,border:`1.5px solid ${C.border}`,borderRadius:8,padding:'9px 12px',fontSize:14,fontFamily:'inherit',background:C.cream,color:C.text}}/>
+          <${Btn} small onClick=${()=>{addCustomMealItem(mpCell.day,mpCell.who,mpCell.slot,mpCustomText); setMpCustomText('');}}>Add<//>
+        </div>
+        <datalist id="mp-recipe-list">${data.recipes.map(r=>html`<option key=${r.id} value=${r.name}/>`)}</datalist>
+        ${data.recipes.length>0&&html`<div>
+          <div style=${{fontSize:12,fontWeight:700,color:C.textMuted,marginBottom:8,letterSpacing:0.3}}>YOUR RECIPES</div>
+          <div style=${{display:'flex',flexWrap:'wrap',gap:6}}>
+            ${data.recipes.map(r=>{ const active=getMealItems(mpCell.day,mpCell.who,mpCell.slot).includes(r.name); return html`<button key=${r.id} onClick=${()=>toggleMealItem(mpCell.day,mpCell.who,mpCell.slot,r.name)}
+              style=${{border:`1.5px solid ${active?C.sage:C.border}`,background:active?C.sage:'transparent',color:active?'#fff':C.text,borderRadius:7,padding:'6px 11px',fontSize:12.5,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>${active?'✓ ':''}${r.name}</button>`; })}
+          </div>
+        </div>`}
+        <div style=${{display:'flex',justifyContent:'flex-end',marginTop:20}}>
+          <${Btn} small onClick=${()=>setMpCell(null)}>Done<//>
+        </div>
+      </div>`}
+    <//>
     <${Modal} title=${view?.name||''} open=${!!view} onClose=${()=>setView(null)}>
       ${view&&html`<div>
         <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}}>
