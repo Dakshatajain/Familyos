@@ -79,6 +79,26 @@ const today = () => new Date().toISOString().split('T')[0];
 const fmt = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
 const daysUntil = d => Math.ceil((new Date(d+'T00:00:00') - new Date()) / 86400000);
 const uid = () => Date.now() + Math.floor(Math.random()*9999);
+const compressImage = (file, maxDim=1280, quality=0.72) => new Promise((resolve,reject)=>{
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      let {width,height} = img;
+      if(width>maxDim || height>maxDim){
+        if(width>=height){ height=Math.round(height*maxDim/width); width=maxDim; }
+        else { width=Math.round(width*maxDim/height); height=maxDim; }
+      }
+      const canvas=document.createElement('canvas'); canvas.width=width; canvas.height=height;
+      const ctx=canvas.getContext('2d'); ctx.drawImage(img,0,0,width,height);
+      resolve(canvas.toDataURL('image/jpeg',quality));
+    };
+    img.onerror = () => reject(new Error('Could not read image'));
+    img.src = e.target.result;
+  };
+  reader.onerror = () => reject(new Error('Could not read file'));
+  reader.readAsDataURL(file);
+});
 const recurringDate = (ev, yr) => {
   if (!ev.recurring) return ev.date;
   const o = new Date(ev.date+'T00:00:00');
@@ -237,7 +257,8 @@ const SEED = {
     {id:4,category:'Medical',label:"Adrith's Blood Type",value:'O+',note:''},
     {id:5,category:'Home',label:'HOA Contact',value:'contact@myhoa.org',note:'Meetings first Monday of month'},
     {id:6,category:'Vehicle',label:'Car Insurance Policy',value:'State Farm #SF-88991',note:'Renewal: Dec 2026'},
-  ]
+  ],
+  receipts:[]
 };
 
 // ── SHARED UI COMPONENTS ──────────────────────────────────────────────────────
@@ -1243,6 +1264,128 @@ function Records({data,updateData}) {
   </div>`;
 }
 
+// ── RECEIPTS ──────────────────────────────────────────────────────────────────
+function Receipts({data,updateData}) {
+  const [modal,setModal] = useState(false);
+  const [edit,setEdit] = useState(null);
+  const [view,setView] = useState(null);
+  const [f,setF] = useState({});
+  const [filterCat,setFilterCat] = useState('All');
+  const [search,setSearch] = useState('');
+  const [imgLoading,setImgLoading] = useState(false);
+  const fileRef = useRef(null);
+  const receipts = data.receipts||[];
+
+  const openModal = item => { setEdit(item||null); setF(item?{...item}:{name:'',store:'',category:'Receipt',date:today(),amount:'',returnBy:'',notes:'',image:''}); setModal(true); };
+  const save = () => {
+    if(!f.name) return;
+    updateData({receipts: edit ? receipts.map(r=>r.id===edit.id?{...f,id:edit.id}:r) : [...receipts,{...f,id:uid()}]});
+    setModal(false); setView(null);
+  };
+  const del = id => { updateData({receipts:receipts.filter(r=>r.id!==id)}); setModal(false); setView(null); };
+
+  const handleFile = async e => {
+    const file = e.target.files?.[0]; if(!file) return;
+    setImgLoading(true);
+    try { const dataUrl = await compressImage(file); setF(prev=>({...prev,image:dataUrl})); }
+    catch(err){ console.warn('Image processing failed:', err.message); }
+    setImgLoading(false);
+    e.target.value = '';
+  };
+
+  const daysLeft = d => { if(!d) return null; return Math.ceil((new Date(d+'T00:00:00')-new Date(today()+'T00:00:00'))/86400000); };
+
+  const cats = ['All','Receipt','Coupon','Warranty','Other'];
+  const list = receipts
+    .filter(r=>filterCat==='All'||r.category===filterCat)
+    .filter(r=>!search||`${r.name} ${r.store||''}`.toLowerCase().includes(search.toLowerCase()))
+    .sort((a,b)=>{ const ra=a.returnBy||'9999-99-99', rb=b.returnBy||'9999-99-99'; if(ra!==rb) return ra.localeCompare(rb); return (b.date||'').localeCompare(a.date||''); });
+
+  return html`<div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
+      <h2 style=${{margin:0,fontSize:22,fontWeight:700,fontFamily:"'DM Serif Display',serif",color:C.text}}>Receipts & Coupons</h2>
+      <${Btn} small onClick=${()=>openModal(null)}>📷 + Add<//>
+    </div>
+
+    <input value=${search} onInput=${e=>setSearch(e.target.value)} placeholder="Search by name or store..."
+      style=${{width:'100%',boxSizing:'border-box',border:`1.5px solid ${C.border}`,borderRadius:8,padding:'9px 12px',fontSize:14,fontFamily:'inherit',background:C.cream,color:C.text,marginBottom:12}}/>
+
+    <div style=${{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
+      ${cats.map(c=>html`<button key=${c} onClick=${()=>setFilterCat(c)}
+        style=${{border:`1.5px solid ${filterCat===c?C.sage:C.border}`,background:filterCat===c?C.sage:'transparent',color:filterCat===c?'#fff':C.textMuted,borderRadius:8,padding:'6px 13px',cursor:'pointer',fontSize:12.5,fontWeight:600,fontFamily:'inherit'}}>${c}<//>`)}
+    </div>
+
+    ${!list.length && html`<div style=${{textAlign:'center',color:C.textMuted,padding:'50px 0',fontSize:14}}>No receipts yet.<br/>Tap <b>+ Add</b> to snap your first one 📸</div>`}
+
+    <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:12}}>
+      ${list.map(r=>{ const dl=daysLeft(r.returnBy); return html`
+        <${Card} key=${r.id} onClick=${()=>setView(r)} style=${{cursor:'pointer',padding:0,overflow:'hidden'}}>
+          <div style=${{width:'100%',height:110,background:C.border,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+            ${r.image?html`<img src=${r.image} style=${{width:'100%',height:'100%',objectFit:'cover'}}/>`:html`<span style=${{fontSize:30}}>🧾</span>`}
+          </div>
+          <div style=${{padding:'10px 12px'}}>
+            <div style=${{fontWeight:700,fontSize:13,color:C.text,marginBottom:5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${r.name}</div>
+            <div style=${{display:'flex',gap:4,flexWrap:'wrap'}}>
+              <${Badge} color=${r.category==='Coupon'?'amber':r.category==='Warranty'?'purple':'blue'} small>${r.category}<//>
+              ${dl!==null&&html`<${Badge} color=${dl<0?'red':dl<=3?'coral':'green'} small>${dl<0?'Expired':dl===0?'Today':dl+'d left'}<//>`}
+            </div>
+          </div>
+        <//>`; })}
+    </div>
+
+    <${Modal} title=${view?.name||''} open=${!!view} onClose=${()=>setView(null)}>
+      ${view&&html`<div>
+        ${view.image&&html`<img src=${view.image} style=${{width:'100%',borderRadius:10,marginBottom:14,maxHeight:400,objectFit:'contain',background:C.cream}}/>`}
+        <div style=${{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+          <${Badge} color="sage">${view.category}<//>
+          ${view.store&&html`<${Badge} color="blue">${view.store}<//>`}
+          ${view.amount&&html`<${Badge} color="amber">$${view.amount}<//>`}
+        </div>
+        <div style=${{fontSize:13,color:C.textMuted,marginBottom:6}}>Purchased: ${view.date||'—'}</div>
+        ${view.returnBy&&html`<div style=${{fontSize:13,color:C.textMuted,marginBottom:6}}>Return / expires by: <b style=${{color:C.text}}>${view.returnBy}</b></div>`}
+        ${view.notes&&html`<div style=${{fontSize:14,color:C.text,lineHeight:1.6,whiteSpace:'pre-wrap',background:C.cream,borderRadius:8,padding:'10px 12px',marginBottom:12}}>${view.notes}</div>`}
+        <div style=${{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
+          <${Btn} danger small onClick=${()=>del(view.id)}>Delete<//>
+          <${Btn} variant="outline" small onClick=${()=>{openModal(view);setView(null);}}>Edit<//>
+        </div>
+      </div>`}
+    <//>
+
+    <${Modal} title=${edit?'Edit Item':'New Receipt / Coupon'} open=${modal} onClose=${()=>setModal(false)}>
+      <div style=${{display:'flex',flexDirection:'column',gap:13}}>
+        <input ref=${fileRef} type="file" accept="image/*" capture="environment" onChange=${handleFile} style=${{display:'none'}}/>
+        ${f.image?html`<div style=${{position:'relative'}}>
+          <img src=${f.image} style=${{width:'100%',maxHeight:260,objectFit:'contain',borderRadius:10,background:C.cream}}/>
+          <div style=${{display:'flex',gap:8,marginTop:8}}>
+            <${Btn} variant="outline" small onClick=${()=>fileRef.current?.click()}>Retake<//>
+            <${Btn} danger small onClick=${()=>setF({...f,image:''})}>Remove Photo<//>
+          </div>
+        </div>`:html`<button onClick=${()=>fileRef.current?.click()} disabled=${imgLoading}
+          style=${{width:'100%',border:`1.5px dashed ${C.borderMd}`,borderRadius:10,padding:'26px 12px',background:C.cream,color:C.textMuted,fontSize:14,fontWeight:600,cursor:imgLoading?'wait':'pointer',fontFamily:'inherit'}}>
+          ${imgLoading?'Processing…':'📷 Tap to snap or upload a photo'}
+        <//>`}
+        <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          <${Inp} label="Name / Item" value=${f.name} onChange=${v=>setF({...f,name:v})} required=${true} placeholder="Air fryer, Groceries..."/>
+          <${Inp} label="Store" value=${f.store} onChange=${v=>setF({...f,store:v})} placeholder="Target, Costco..."/>
+        </div>
+        <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          <${Sel} label="Type" value=${f.category} onChange=${v=>setF({...f,category:v})} options=${['Receipt','Coupon','Warranty','Other']}/>
+          <${Inp} label="Amount ($)" value=${f.amount} onChange=${v=>setF({...f,amount:v})} placeholder="49.99"/>
+        </div>
+        <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          <${Inp} label="Purchase Date" type="date" value=${f.date} onChange=${v=>setF({...f,date:v})}/>
+          <${Inp} label="Return / Expiry By" type="date" value=${f.returnBy} onChange=${v=>setF({...f,returnBy:v})}/>
+        </div>
+        <${Txa} label="Notes" value=${f.notes} onChange=${v=>setF({...f,notes:v})} placeholder="Return policy, order #, coupon code..." rows=${3}/>
+        <div style=${{display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <${Btn} variant="outline" onClick=${()=>setModal(false)}>Cancel<//>
+          <${Btn} onClick=${save}>Save<//>
+        </div>
+      </div>
+    <//>
+  </div>`;
+}
+
 // ── TRIPS ─────────────────────────────────────────────────────────────────────
 function Trips({data,updateData}) {
   const [modal,setModal] = useState(false);
@@ -1686,6 +1829,7 @@ const NAV = [
   {id:'parties',label:'Parties',emoji:'🎉'},
   {id:'baby',label:'Adrith',emoji:'👶'},
   {id:'records',label:'Records',emoji:'📁'},
+  {id:'receipts',label:'Receipts',emoji:'🧾'},
   {id:'dataManagement',label:'Data',emoji:'📊'},
 ];
 
@@ -1755,6 +1899,7 @@ function App() {
     parties: html`<${Parties} data=${data} updateData=${updateData}/>`,
     baby: html`<${BabyCorner} data=${data} updateData=${updateData}/>`,
     records: html`<${Records} data=${data} updateData=${updateData}/>`,
+    receipts: html`<${Receipts} data=${data} updateData=${updateData}/>`,
     dataManagement: html`<${DataManagement} data=${data} updateData=${updateData}/>`,
   };
 
