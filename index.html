@@ -738,17 +738,17 @@ function Kitchen({data,updateData}) {
   };
 
 const nutrition = await response.json();
-console.log('Nutrition data received:', nutrition);
+  console.log('Nutrition data received:', nutrition);
 
-setF(prev => ({
-  ...prev,
-  nutrition: {
-    calories: Number(nutrition.calories) || 0,
-    protein: Number(nutrition.protein) || 0,
-    carbs: Number(nutrition.carbs) || 0,
-    fat: Number(nutrition.fat) || 0
-  }
-}));
+  setF(prev => ({
+    ...prev,
+    nutrition: {
+      calories: Number(nutrition.calories) || 0,
+      protein: Number(nutrition.protein) || 0,
+      carbs: Number(nutrition.carbs) || 0,
+      fat: Number(nutrition.fat) || 0
+    }
+  }));
 // const calcNutrition = async () => {
 //   console.log('AI Calc clicked!');
 //   if (!f.ingredients) return;
