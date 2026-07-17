@@ -736,19 +736,32 @@ function Kitchen({data,updateData}) {
     const txt = data.recipes.map(r=>`${r.name}\n${'='.repeat(r.name.length)}\n\nINGREDIENTS:\n${r.ingredients}\n\nINSTRUCTIONS:\n${r.instructions}\n\n${'─'.repeat(40)}\n`).join('\n');
     const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'})); a.download='My_Recipes.txt'; a.click();
   };
-const calcNutrition = async () => {
-  console.log('AI Calc clicked!');
-  if (!f.ingredients) return;
-  setAiLoading(true);
-  try {
-    const response = await fetch('/api/nutrition', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        ingredients: f.ingredients, 
-        servings: f.servings || 1 
-      })
-    });
+
+const nutrition = await response.json();
+console.log('Nutrition data received:', nutrition);
+
+setF(prev => ({
+  ...prev,
+  nutrition: {
+    calories: Number(nutrition.calories) || 0,
+    protein: Number(nutrition.protein) || 0,
+    carbs: Number(nutrition.carbs) || 0,
+    fat: Number(nutrition.fat) || 0
+  }
+}));
+// const calcNutrition = async () => {
+//   console.log('AI Calc clicked!');
+//   if (!f.ingredients) return;
+//   setAiLoading(true);
+//   try {
+//     const response = await fetch('/api/nutrition', {
+//       method: 'POST',
+//       headers: { 'Content-Type': 'application/json' },
+//       body: JSON.stringify({ 
+//         ingredients: f.ingredients, 
+//         servings: f.servings || 1 
+//       })
+//     });
     
     if (!response.ok) throw new Error('Failed to calculate nutrition');
     
