@@ -1726,48 +1726,24 @@ function App() {
     }
     
     // Listen for Firebase real-time updates
-    // Register and update the service worker
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker
-      .register('/sw.js', {
-        updateViaCache: 'none'
-      })
-      .then(registration => {
-        console.log('✅ Service worker registered');
-        registration.update();
-      })
-      .catch(error => {
-        console.warn('⚠️ Service worker registration failed:', error);
-      });
-  }
-  
-  // Listen for Firebase real-time updates
-  if (database) {
-    database.ref('familyData').on(
-      'value',
-      snapshot => {
+    if (database) {
+      const unsubscribe = database.ref('familyData').on('value', snapshot => {
         const fbData = snapshot.val();
-  
         if (fbData) {
           console.log('🔄 Real-time update from Firebase');
           setData(fbData);
-  
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(fbData));
-          } catch (e) {}
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(fbData)); } catch(e) {}
         }
-      },
-      error => {
+      }, error => {
         console.warn('Firebase listen error:', error.message);
-      }
-    );
-  }
-  
-  return () => {
-    if (database) {
-      database.ref('familyData').off('value');
+      });
+      return () => {
+        if (database) database.ref('familyData').off('value');
+      };
     }
-  };
+    
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }, []);
 
   const updateData = useCallback(updates => {
     setData(prev => {

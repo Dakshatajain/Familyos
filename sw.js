@@ -1,84 +1,95 @@
-const CACHE_NAME = 'family-life-os-v4';
-
-const STATIC_FILES = [
+const CACHE_NAME = 'family-life-os-v3';
+const CORE_FILES = [
+  '/',
+  '/index.html',
   '/manifest.json',
   '/icon-192.svg',
   '/icon-512.svg'
 ];
 
 self.addEventListener('install', event => {
+  console.log('✅ Service Worker installing...');
   self.skipWaiting();
-
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_FILES))
-  );
-});
-
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys()
-      .then(keys =>
-        Promise.all(
-          keys
-            .filter(key => key !== CACHE_NAME)
-            .map(key => caches.delete(key))
+    caches.open(CACHE_NAME).then(cache => {
+      console.log('📦 Caching core files');
+      return Promise.all(
+        CORE_FILES.map(file => 
+          cache.add(file).catch(err => {
+            console.warn(`⚠️ Failed to cache ${file}:`, err);
+          })
         )
-      )
-      .then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener('fetch', event => {
-  const request = event.request;
-  const url = new URL(request.url);
-
-  if (request.method !== 'GET') return;
-  if (url.origin !== self.location.origin) return;
-
-  // Always fetch pages from the network.
-  // Never return a cached copy of index.html.
-  if (
-    request.mode === 'navigate' ||
-    request.headers.get('accept')?.includes('text/html')
-  ) {
-    event.respondWith(
-      fetch(request, { cache: 'no-store' }).catch(() => {
-        return new Response(
-          '<h1>You are offline</h1><p>Please reconnect and reload the app.</p>',
-          {
-            status: 503,
-            headers: { 'Content-Type': 'text/html' }
-          }
-        );
-      })
-    );
-    return;
-  }
-
-  // Cache-first only for static files such as icons and the manifest.
-  event.respondWith(
-    caches.match(request).then(cachedResponse => {
-      if (cachedResponse) return cachedResponse;
-
-      return fetch(request).then(response => {
-        if (!response || response.status !== 200) {
-          return response;
-        }
-
-        const responseCopy = response.clone();
-
-        caches.open(CACHE_NAME).then(cache => {
-          cache.put(request, responseCopy);
-        });
-
-        return response;
-      });
+      );
+    }).catch(err => {
+      console.error('❌ Cache open failed:', err);
     })
   );
 });
 
+self.addEventListener('activate', event => {
+  console.log('✅ Service Worker activating...');
+  event.waitUntil(
+    caches.keys().then(keys => {
+      return Promise.all(
+        keys
+          .filter(key => key !== CACHE_NAME)
+          .map(key => {
+            console.log('🗑️ Deleting old cache:', key);
+            return caches.delete(key);
+          })
+      );
+    }).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', event => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  if (request.method !== 'GET') return;
+
+  if (url.hostname !== self.location.hostname) {
+    event.respondWith(
+      fetch(request).catch(() => new Response('', { status: 0 }))
+    );
+    return;
+  }
+
+  event.respondWith(
+    fetch(request)
+      .then(response => {
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(request, clone);
+          });
+        }
+        return response;
+      })
+      .catch(() => {
+        return caches.match(request)
+          .then(cached => {
+            if (cached) {
+              console.log('💾 Serving from cache:', request.url);
+              return cached;
+            }
+            if (request.headers.get('accept')?.includes('text/html')) {
+              return caches.match('/index.html');
+            }
+            return new Response('Offline', { status: 503 });
+          })
+          .catch(err => {
+            console.error('❌ Cache match failed:', err);
+            return new Response('Offline', { status: 503 });
+          });
+      })
+  );
+});
+
 self.addEventListener('message', event => {
-  if (event.data?.type === 'SKIP_WAITING') {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
+
+console.log('✅ Service Worker loaded and ready');
