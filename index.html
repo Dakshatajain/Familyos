@@ -1718,31 +1718,86 @@ function App() {
   const mobile = window.innerWidth < 768;
 
   useEffect(() => {
-    try { 
-      const s=localStorage.getItem(STORAGE_KEY); 
-      setData(s?JSON.parse(s)||SEED:SEED); 
-    } catch { 
-      setData(SEED); 
+    let localData = null;
+  
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+  
+      if (saved) {
+        localData = JSON.parse(saved);
+        setData(localData || SEED);
+      } else {
+        setData(SEED);
+      }
+    } catch (error) {
+      console.warn('Local data could not be loaded:', error);
+      setData(SEED);
     }
-    
-    // Listen for Firebase real-time updates
-    if (database) {
-      const unsubscribe = database.ref('familyData').on('value', snapshot => {
-        const fbData = snapshot.val();
-        if (fbData) {
-          console.log('🔄 Real-time update from Firebase');
-          setData(fbData);
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(fbData)); } catch(e) {}
+  
+    // Register the service worker separately.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .register('/sw.js', { updateViaCache: 'none' })
+        .catch(error => {
+          console.warn('Service worker registration failed:', error);
+        });
+    }
+  
+    if (!database) {
+      console.warn('Firebase database is unavailable');
+      return;
+    }
+  
+    const familyDataRef = database.ref('familyData');
+  
+    const handleValue = snapshot => {
+      const firebaseData = snapshot.val();
+  
+      if (firebaseData) {
+        console.log('🔄 Loaded data from Firebase');
+        setData(firebaseData);
+  
+        try {
+          localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(firebaseData)
+          );
+        } catch (error) {
+          console.warn('Could not save Firebase data locally:', error);
         }
-      }, error => {
-        console.warn('Firebase listen error:', error.message);
-      });
-      return () => {
-        if (database) database.ref('familyData').off('value');
-      };
-    }
-    
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+  
+        return;
+      }
+  
+      // Only upload this browser's local data when explicitly requested.
+      const params = new URLSearchParams(window.location.search);
+      const shouldUploadLocal = params.get('uploadLocal') === '1';
+  
+      if (shouldUploadLocal && localData) {
+        console.log('⬆️ Uploading desktop local data to Firebase');
+  
+        familyDataRef
+          .set(localData)
+          .then(() => {
+            console.log('✅ Local data uploaded to Firebase');
+          })
+          .catch(error => {
+            console.error('Firebase upload failed:', error);
+          });
+      } else {
+        console.log('Firebase is empty; local data was not uploaded automatically');
+      }
+    };
+  
+    const handleError = error => {
+      console.warn('Firebase listen error:', error.message);
+    };
+  
+    familyDataRef.on('value', handleValue, handleError);
+  
+    return () => {
+      familyDataRef.off('value', handleValue);
+    };
   }, []);
 
   const updateData = useCallback(updates => {
